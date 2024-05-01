@@ -1,0 +1,241 @@
+GETTING A MEME
+
+Users prepay for tokens to be used when calling the API.
+While the call count is less than amount of tokens, a meme is generate.
+Once it's reaches the amount, an error message is generated.
+(Note: in real-life, most like the system's behavior would be to allow
+users to use the system and the user would be sent an invoice at the end
+of the billing cycle).
+
+It is important to keep an accurate count of how many times the API has been called.
+For example, the user can make simultaneously calls to the API.
+The count could be updated in the database, but due to a nework error or
+service crash, the meme never reaches the user.
+
+One way to handle network issues is having a retry mechanism.
+If after X amount of times the response is not sent, place it
+in a queue to be sent later.
+
+The relevant data in the database could be lock when a request reaches, to avoid inconsistencies.
+Placing sending the response as part of a database transaction would insure this is a single transaction.
+The problem with that is that database resources are limited.
+This solution takes longer to free the resources.
+Can be mitigated by adding more resources, but up to a point. After that additional databases would be needed.
+Another drawback of this option is the increased latency when simultaneously request reach the API,
+since only one thread should update the value.
+
+This options guarantees consistency.
+The user does not lose tokens and will increase confidence in the company.
+
+Note that for this project the transaction was not implemented.
+
+The purchased tokens are stored as a key-value.
+The key is the user ID and the value is the number of tokens the user has.
+
+The call count is also stored as a key-value.
+Ideally, there keys would be stored in different instances, however for this
+project there's only one instance.
+To distinguish between the tokens and count, keys that are "id" (e.g. 1) represent purchased tokens.
+Key that are "id_count" (e.g.: 1_count) are for the count.
+
+A meme could be text, image or video.
+The user should select the type of format.
+It would be beneficial to add to the API another property.
+The property could be optional. If the user doesn't specify, the service either has a default or selects randomlly.
+
+From a business model, perhaps the different formats require different types of tokens.
+
+Note: the implementation returns a text meme.
+
+Response structure
+
+{
+	"meme": "<id>_<lat>_<lon>_<query>"
+}
+
+Response sample
+
+{
+	"meme": "8_123_456_abc"
+}
+
+Image and video memes would be stored on the cloud and the API's response
+would be a link to the object.
+Also, it would be nice if the link sent is a minimized (meaning, the URL is shortened).
+
+In this theoretical project, the assumption is that generating a meme is quick enough and
+the response is immediate.
+In real-life, meme generation could take a while, in which case, once the request has been
+logged in the server, the response to the user would be a success.
+The meme itself would be sent later via mail, app/site notification or both. 
+
+Enhancements to code:
+Externalize messages
+
+Note: It seemed strange that the database is updated in a GET REST method which is supposed to be safe and idempotent.
+I read RFC 7231 (https://www.greenbytes.de/tech/webdav/rfc7231.html#safe.methods) to see that it's ok to update as part of GET
+when it's in some scenarios.
+Since the updates in the database is for how many times the API has been reached, and not decreasing from the purchased tokens, it would be ok.
+---
+
+GETTING A USER'S CURRENT TOKEN BALANCE
+
+To get the user token balance, the number of times the API has been called needs to be subtracted from the purached tokens.
+If an ID does not exist an error message is returned.
+
+---
+
+VALIDATION AND SECURITY
+
+The code validates that the user ID exists.
+Additional validations should be for the latitude and longitude.
+For the query paramter, it is not specificed how long it can be.
+If the limit is less than what a REST API parameter can support,
+a validation should be implemented.
+Since the input is coming from the user, there's a need to check
+if there are any security concerns.
+
+---
+
+TECHNICAL CONSIDERATIONS
+As mentioned above, the data is stored in a key-value database.
+
+A SQL database seems unnecessary for this API.
+
+Granted that for some of the other service functionalities,
+such as creating an account, a SQL database would be beneficial.
+
+The benefit of using an in-memory database is that it's much quicker.
+It supports key eviction, thus reducing the memory.
+But still stores the data on disk, so data is not lost.
+
+I used Redis since that's what I already had installed.
+There are many other key-value databases.
+For a real-life service, they should be weighed against each other
+based on the needs of the service.
+
+---
+
+TESTING
+
+In addition to unit-tests, I also wrote code that launches X requests to the service.
+The code is based on Java code I already had, but I also wrote it in Go.
+
+Both versions are attached.
+
+For a real-life service, the following types of tests should be conducted:
+Functional: Making sure the system works as expected in both happy and unhappy paths.
+Performance tests: load, stress, spike.
+Security tests
+
+---
+
+FAULT TOLERANCE
+
+To make sure the service is always available,
+there service sohuld scale based on the traffic it gets.
+In the initial stages of releasing the service, there won't be
+data to analyze, so an educated guess will be made in terms of
+how much traffic the service will get.
+
+DISASTER RECOVERY
+
+If the system crash, it's important to recovery from it gracefully and make sure data isn't lost.
+Using replication mechanisms would help achieve that.
+
+CIRCUIT BREAKER
+
+Make sure that if one part of the system fails, it does not cause a wider failure.
+
+===
+
+SCALING THE SERVICE
+
+Scaling a service requires careful planning and consideration of various aspects.
+
+CI/CD:
+1. Automated build, testing, deployment.
+2. Upgrades should be with the least amount of downtime as possible. Ideally, there should be zero downtime.
+3. Deployment should be in stages. To a specific region. To X amount of users. etc
+4. Autoscale the number of service instances.
+
+Service Level Agreements (SLA):
+Clear SLA that outline the expected performance, uptime and support response times should be defined.
+Monitor system metrics closely to ensure that the SLA is met.
+Alert mechanisms should be used.
+Have support team ready to handle issues.
+
+Operational Level Agreements (OLA):
+OLA should include metrics such as uptime, response time for API requests.
+Aim for high availability and low latency to provide a smooth user experience.
+Targets should be set based the teams resources, user expectations and the criticality of the service.
+
+Geographically Diverse Clients:
+Content Delivery Networks (CDN) should be used to distribute the service closer to users across different geographical locations.
+Reduces latency and improves performance.
+Multi-region redundancy should be implemented for high availability in case of regional outages.
+
+Keeping Track of Tokens:
+To scale without slowing the system, distributed caching could be used (e.g: Redis or Memcached to store token information in-memory).
+Allows for fast access to token data without the overhead of querying a database.
+Sharding or partitioning strategies to distribute token data across multiple nodes for scalability.
+
+Meme generation latency:
+Measure how much time it takes to generate a meme.
+If the process takes too long consider:
+* pre-generating memes: the problem with that is that a meme relays on input from the user.
+Perhaps AI could predict what types of memes the users in likely to request.
+* Memes generation nodes for users that use the systems a lot.
+
+Rate Limiting and Throttling:
+Rate limiting and throttling prevent abuse and excessive usage of the service.
+This helps maintain system performance and ensures that resources are fairly distributed among users.
+
+Load Balancing:
+Distribute incoming requests across multiple servers to prevent overload on any single server.
+Load balancers distribute traffic evenly and prevent any one server from becoming a bottleneck.
+
+Optimized Code:
+Efficient and optimized code minimizes processing time for each request.
+Performance improvements at code level can have significant impact on the system.
+
+Monitoring user interaction:
+How many users use the service frequently?
+How many users use the service once in a while?
+How much data is generated per usage?
+How much data overall?
+Do users that use the service often also use a lot of data.
+Meaning, user A uses the service X times a month, but only generates text memes.
+User B uses the service fraction of X times a month, but only generates video memes. 
+
+===
+
+PREMIUM OFFERING
+
+Token-Based Authentication:
+When subscribing to the premium service, the user receive a unique authentication token.
+The token is sent with each request.
+The API server can authenticate the token without having to query a database. The token itself contains the necessary information.
+
+Cache:
+Assuming the subscription details will be stored in a SQL database.
+Querying the database everytime will slow down the service.
+
+So, in addition to keeping the subscription details in a SQL database, it will also be stored in-memory.
+
+When a request reaches the service, the service checks if the user has the premium subscription.
+First check is in-memory, if the details are not in-memory, the data is retrieved from the SQL database and is kept in-memory.
+The details will or won't be in-memory based on the eviction policy.
+
+Database Indexing:
+Index the relevant column(s) in the database for efficient retrieval of subscription information.
+
+SQL query:
+The SQL query should be as efficient as possible, optimization techniques and execution plans.
+If possible, avoid queries using things such as: select *, wildcards, LIKE, ...
+
+Asynchronous Processing:
+It might be wise to have a validation service, which means API calls.
+To reduce time, the validation and meme generation can happen parallelly.
+But if the meme is ready before the validation is done, the response will have to wait.
+The drawback to this is that both AI and non-AI genearion would need to occur and one will be discarded, hence resouces are wasted.
